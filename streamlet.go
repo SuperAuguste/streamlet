@@ -207,6 +207,7 @@ func (db *Streamlet) Get(id string) StreamletDocument {
 // Deletes deleted documents and edits edited documents in the database file itself - WARNING: this will rewrite the database file entirely, use this sparingly or on small databases.
 func (db *Streamlet) Clean() {
 
+	db.File.Seek(0, 0)
 	db.File.Truncate(0)
 	db.File.Seek(0, 0)
 	for _, doc := range db.Documents {
