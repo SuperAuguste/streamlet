@@ -63,7 +63,6 @@ func (db *Streamlet) Init() {
 		if data == "DELETE" {
 
 			idx := sort.SearchStrings(db.DocumentIds, id)
-
 			db.deleteDocumentByIndex(idx)
 
 		} else {
@@ -74,6 +73,15 @@ func (db *Streamlet) Init() {
 			if len(db.DocumentIds) != 0 && sort.SearchStrings(db.DocumentIds, id) != len(db.DocumentIds) {
 
 				fmt.Println("Data edited")
+
+				idx := sort.SearchStrings(db.DocumentIds, id)
+				db.deleteDocumentByIndex(idx)
+
+				db.Documents = append(db.Documents, StreamletDocument{
+					Id: id,
+					Data: decoded,
+				})
+				db.DocumentIds = append(db.DocumentIds, id)
 
 			} else {
 
@@ -195,5 +203,21 @@ func (db *Streamlet) Get(id string) StreamletDocument {
 		return document.Id == id
 
 	})
+
+}
+
+// Deletes deleted documents and edits edited documents in the database file itself - WARNING: this will rewrite the database file entirely, use this sparingly or on small databases.
+func (db *Streamlet) Clean(id string) {
+
+	db.File.Truncate(0)
+	db.File.Seek(0, 0)
+	for _, doc := range db.Documents {
+
+		j, _ := json.Marshal(doc.Data)
+		db.File.WriteString(doc.Id + "-" + string(j) + "\n")
+
+	}
+
+	db.File.Sync()
 
 }
