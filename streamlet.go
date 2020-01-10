@@ -3,22 +3,22 @@ package streamlet
 import (
 	// "io"
 	"bufio"
-	"fmt"
 	"encoding/json"
 	"os"
 	"sort"
+
 	"github.com/SuperAuguste/fsi/fsi"
 )
 
 type Streamlet struct {
-	File *os.File
-	FSI  fsi.FSI
-	Documents []StreamletDocument
+	File        *os.File
+	FSI         fsi.FSI
+	Documents   []StreamletDocument
 	DocumentIds []string
 }
 
 type StreamletDocument struct {
-	Id string
+	Id   string
 	Data map[string]interface{}
 }
 
@@ -26,16 +26,16 @@ type StreamletDocument struct {
 func New(file *os.File) Streamlet {
 
 	return Streamlet{
-		File: file,
-		FSI:  fsi.New(),
-		Documents: make([]StreamletDocument, 0),
+		File:        file,
+		FSI:         fsi.New(),
+		Documents:   make([]StreamletDocument, 0),
 		DocumentIds: make([]string, 0),
 	}
 
 }
 
 func (db *Streamlet) deleteDocumentByIndex(idx int) {
-	
+
 	db.Documents[idx] = db.Documents[len(db.Documents)-1]
 	db.Documents = db.Documents[:len(db.Documents)-1]
 
@@ -72,13 +72,11 @@ func (db *Streamlet) Init() {
 
 			if len(db.DocumentIds) != 0 && sort.SearchStrings(db.DocumentIds, id) != len(db.DocumentIds) {
 
-				fmt.Println("Data edited")
-
 				idx := sort.SearchStrings(db.DocumentIds, id)
 				db.deleteDocumentByIndex(idx)
 
 				db.Documents = append(db.Documents, StreamletDocument{
-					Id: id,
+					Id:   id,
 					Data: decoded,
 				})
 				db.DocumentIds = append(db.DocumentIds, id)
@@ -86,7 +84,7 @@ func (db *Streamlet) Init() {
 			} else {
 
 				db.Documents = append(db.Documents, StreamletDocument{
-					Id: id,
+					Id:   id,
 					Data: decoded,
 				})
 				db.DocumentIds = append(db.DocumentIds, id)
@@ -150,10 +148,10 @@ func (db *Streamlet) Delete(id string) {
 func (db *Streamlet) DeleteBulk(ids []string) {
 
 	for _, id := range ids {
-	
+
 		db.File.WriteString(id + "-DELETE\n")
 		db.deleteDocumentByIndex(sort.SearchStrings(db.DocumentIds, id))
-		
+
 	}
 
 	db.File.Sync()
@@ -165,9 +163,9 @@ func (db *Streamlet) Find(callback func(document StreamletDocument) bool) []Stre
 
 	var docs []StreamletDocument
 	for _, doc := range db.Documents {
-		
+
 		if callback(doc) {
-			
+
 			docs = append(docs, doc)
 
 		}
@@ -182,9 +180,9 @@ func (db *Streamlet) Find(callback func(document StreamletDocument) bool) []Stre
 func (db *Streamlet) FindOne(callback func(document StreamletDocument) bool) StreamletDocument {
 
 	for _, doc := range db.Documents {
-		
+
 		if callback(doc) {
-			
+
 			return doc
 
 		}
@@ -207,7 +205,7 @@ func (db *Streamlet) Get(id string) StreamletDocument {
 }
 
 // Deletes deleted documents and edits edited documents in the database file itself - WARNING: this will rewrite the database file entirely, use this sparingly or on small databases.
-func (db *Streamlet) Clean(id string) {
+func (db *Streamlet) Clean() {
 
 	db.File.Truncate(0)
 	db.File.Seek(0, 0)
