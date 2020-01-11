@@ -204,23 +204,10 @@ func (db *Streamlet) Get(id string) StreamletDocument {
 
 }
 
-func (db *Streamlet) Clear() {
-
-	db.File.Seek(0, 0)
-	db.File.Truncate(0)
-	db.File.Seek(0, 0)
-	
-	db.Documents = make([]StreamletDocument, 0)
-	db.DocumentIds = make([]string, 0)
-
-}
-
 // Deletes deleted documents and edits edited documents in the database file itself - WARNING: this will rewrite the database file entirely, use this sparingly or on small databases.
 func (db *Streamlet) Clean() {
 
-	db.File.Seek(0, 0)
-	db.File.Truncate(0)
-	db.File.Seek(0, 0)
+	os.Truncate(db.File.Name(), 0)
 	for _, doc := range db.Documents {
 
 		j, _ := json.Marshal(doc.Data)
