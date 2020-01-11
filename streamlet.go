@@ -5,7 +5,6 @@ import (
 	"bufio"
 	"encoding/json"
 	"os"
-	"sort"
 
 	"github.com/SuperAuguste/fsi/fsi"
 )
@@ -44,6 +43,22 @@ func (db *Streamlet) deleteDocumentByIndex(idx int) {
 
 }
 
+func (db *Streamlet) findDocumentIndexById(id string) int {
+
+	for index, _id := range db.DocumentIds {
+		
+		if _id == id {
+
+			return index
+
+		}
+
+	}
+
+	return -1
+
+}
+
 // Reads the contents of the database; it requires read permissions to function properly.
 func (db *Streamlet) Init() {
 
@@ -62,7 +77,7 @@ func (db *Streamlet) Init() {
 
 		if data == "DELETE" {
 
-			idx := sort.SearchStrings(db.DocumentIds, id)
+			idx := db.findDocumentIndexById(id)
 			db.deleteDocumentByIndex(idx)
 
 		} else {
@@ -70,9 +85,9 @@ func (db *Streamlet) Init() {
 			var decoded map[string]interface{}
 			json.Unmarshal([]byte(data), &decoded)
 
-			if len(db.DocumentIds) != 0 && sort.SearchStrings(db.DocumentIds, id) != len(db.DocumentIds) {
+			if len(db.DocumentIds) != 0 && db.findDocumentIndexById(id) != -1 {
 
-				idx := sort.SearchStrings(db.DocumentIds, id)
+				idx := db.findDocumentIndexById(id)
 				db.deleteDocumentByIndex(idx)
 
 				db.Documents = append(db.Documents, StreamletDocument{
@@ -139,7 +154,7 @@ func (db *Streamlet) Update(document StreamletDocument) {
 func (db *Streamlet) Delete(id string) {
 
 	db.File.WriteString(id + "-DELETE\n")
-	db.deleteDocumentByIndex(sort.SearchStrings(db.DocumentIds, id))
+	db.deleteDocumentByIndex(db.findDocumentIndexById(id))
 	db.File.Sync()
 
 }
@@ -150,7 +165,7 @@ func (db *Streamlet) DeleteBulk(ids []string) {
 	for _, id := range ids {
 
 		db.File.WriteString(id + "-DELETE\n")
-		db.deleteDocumentByIndex(sort.SearchStrings(db.DocumentIds, id))
+		db.deleteDocumentByIndex(db.findDocumentIndexById(id))
 
 	}
 
