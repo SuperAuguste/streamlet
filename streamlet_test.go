@@ -1,43 +1,42 @@
 package streamlet
 
 import (
+	"fmt"
 	"os"
-	"path/filepath"
 	"testing"
 )
 
-type ExampleElementInsert struct {
-	AString string
-	ANumber int
+var database Streamlet
+var databaseFile *os.File
+
+func TestMain(m *testing.M) {
+
+	databaseFile, _ = os.OpenFile("test_database", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0600)
+	database = New(databaseFile)
+
+	os.Exit(m.Run())
+
 }
 
 func BenchmarkInsertBulk(b *testing.B) {
 
-	exec, err := os.Executable()
-	if err != nil {
-
-		b.Fatal(err)
-
-	}
-
-	file, err := os.OpenFile(filepath.Join(filepath.Dir(exec), "database"), os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
-	if err != nil {
-
-		b.Fatal(err)
-
-	}
-	defer file.Close()
-
-	db := New(file)
-	var arr []interface{}
+	var arr []map[string]interface{}
 	for i := 0; i < b.N; i++ {
-		
-		arr = append(arr, ExampleElementInsert{
-			AString: "Hello World",
-			ANumber: 111,
+
+		arr = append(arr, map[string]interface{}{
+			"a_string": "Hello World!",
+			"a_number": 111,
 		})
 
 	}
-	db.InsertBulk(arr)
+	database.InsertBulk(arr)
+
+}
+
+func BenchmarkInit(b *testing.B) {
+
+	database.Init()
+
+	fmt.Println(database.Documents[database.Keys()[0]].Data)
 
 }

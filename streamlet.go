@@ -3,17 +3,17 @@ package streamlet
 import (
 	// "io"
 	"bufio"
-	"encoding/json"
-	"os"
+	"io"
 
 	"github.com/SuperAuguste/fsi/fsi"
+	jsoniter "github.com/json-iterator/go"
 )
 
 type Streamlet struct {
-	File        *os.File
-	FSI         fsi.FSI
-	Documents   []StreamletDocument
-	DocumentIds []string
+	ReadWriter io.ReadWriter
+	Writer     *bufio.Writer
+	FSI        fsi.FSI
+	Documents  map[string]StreamletDocument
 }
 
 type StreamletDocument struct {
@@ -21,126 +21,111 @@ type StreamletDocument struct {
 	Data map[string]interface{}
 }
 
+var jsond = jsoniter.ConfigFastest
+
 // Create / open a new Streamlet instance.
-func New(file *os.File) Streamlet {
+func New(readWriter io.ReadWriter) Streamlet {
 
 	return Streamlet{
-		File:        file,
-		FSI:         fsi.New(),
-		Documents:   make([]StreamletDocument, 0),
-		DocumentIds: make([]string, 0),
+		ReadWriter: readWriter,
+		Writer:     bufio.NewWriter(readWriter),
+		FSI:        fsi.New(),
+		Documents:  make(map[string]StreamletDocument),
 	}
 
 }
 
-func (db *Streamlet) deleteDocumentByIndex(idx int) {
+func (db *Streamlet) readLine(line string) {
 
-	db.Documents[idx] = db.Documents[len(db.Documents)-1]
-	db.Documents = db.Documents[:len(db.Documents)-1]
+	id := line[:33]
+	data := line[34:]
 
-	db.DocumentIds[idx] = db.DocumentIds[len(db.DocumentIds)-1]
-	db.DocumentIds = db.DocumentIds[:len(db.DocumentIds)-1]
+	if data == "DELETE" {
 
-}
+		delete(db.Documents, id)
 
-func (db *Streamlet) findDocumentIndexById(id string) int {
+	} else {
 
-	for index, _id := range db.DocumentIds {
-		
-		if _id == id {
+		var decoded map[string]interface{}
+		// jsond.b().
+		jsond.UnmarshalFromString(data, &decoded)
 
-			return index
-
-		}
+		db.addDocument(id, decoded)
 
 	}
 
-	return -1
-
 }
 
-// Reads the contents of the database; it requires read permissions to function properly.
+// Reads the contents of the database.
 func (db *Streamlet) Init() {
 
-	scanner := bufio.NewScanner(db.File)
+	scanner := bufio.NewScanner(db.ReadWriter)
 	for scanner.Scan() {
 
-		line := scanner.Text()
-		if len(line) < 33 {
-
-			continue
-
-		}
-
-		id := line[:33]
-		data := line[34:]
-
-		if data == "DELETE" {
-
-			idx := db.findDocumentIndexById(id)
-			db.deleteDocumentByIndex(idx)
-
-		} else {
-
-			var decoded map[string]interface{}
-			json.Unmarshal([]byte(data), &decoded)
-
-			if len(db.DocumentIds) != 0 && db.findDocumentIndexById(id) != -1 {
-
-				idx := db.findDocumentIndexById(id)
-				db.deleteDocumentByIndex(idx)
-
-				db.Documents = append(db.Documents, StreamletDocument{
-					Id:   id,
-					Data: decoded,
-				})
-				db.DocumentIds = append(db.DocumentIds, id)
-
-			} else {
-
-				db.Documents = append(db.Documents, StreamletDocument{
-					Id:   id,
-					Data: decoded,
-				})
-				db.DocumentIds = append(db.DocumentIds, id)
-
-			}
-
-		}
+		db.readLine(scanner.Text())
 
 	}
+
+}
+
+func (db *Streamlet) addDocument(id string, data map[string]interface{}) {
+
+	db.Documents[id] = StreamletDocument{
+		Id:   id,
+		Data: data,
+	}
+
+}
+
+func (db *Streamlet) writeString(data string) {
+
+	db.Writer.WriteString(data)
+
+}
+
+func (db *Streamlet) save() {
+
+	db.Writer.Flush()
 
 }
 
 // Inserts a document into the database.
-func (db *Streamlet) Insert(document interface{}) {
+func (db *Streamlet) Insert(document map[string]interface{}) {
 
-	j, _ := json.Marshal(document)
-	db.File.WriteString(db.FSI.Generate() + "-" + string(j) + "\n")
-	db.File.Sync()
+	id := db.FSI.Generate()
+	j, _ := jsond.Marshal(document)
+
+	db.addDocument(id, document)
+	db.writeString(id + "-" + string(j) + "\n")
+	db.save()
 
 }
 
 // Inserts more than one line of documents into the database.
-func (db *Streamlet) InsertBulk(documents []interface{}) {
+func (db *Streamlet) InsertBulk(documents []map[string]interface{}) {
 
 	for _, i := range documents {
 
-		j, _ := json.Marshal(i)
-		db.File.WriteString(db.FSI.Generate() + "-" + string(j) + "\n")
+		id := db.FSI.Generate()
+		j, _ := jsond.Marshal(i)
+
+		db.addDocument(id, i)
+		db.writeString(id + "-" + string(j) + "\n")
 
 	}
 
-	db.File.Sync()
+	db.save()
 
 }
 
 // Edits a document.
-func (db *Streamlet) Edit(id string, document interface{}) {
+func (db *Streamlet) Edit(id string, document map[string]interface{}) {
 
-	j, _ := json.Marshal(document)
-	db.File.WriteString(id + "-" + string(j) + "\n")
-	db.File.Sync()
+	j, _ := jsond.Marshal(document)
+	db.addDocument(id, document)
+
+	db.writeString(id + "-" + string(j) + "\n")
+	db.save()
 
 }
 
@@ -153,9 +138,9 @@ func (db *Streamlet) Update(document StreamletDocument) {
 // Deletes a document from the database.
 func (db *Streamlet) Delete(id string) {
 
-	db.File.WriteString(id + "-DELETE\n")
-	db.deleteDocumentByIndex(db.findDocumentIndexById(id))
-	db.File.Sync()
+	db.writeString(id + "-DELETE\n")
+	delete(db.Documents, id)
+	db.save()
 
 }
 
@@ -164,12 +149,12 @@ func (db *Streamlet) DeleteBulk(ids []string) {
 
 	for _, id := range ids {
 
-		db.File.WriteString(id + "-DELETE\n")
-		db.deleteDocumentByIndex(db.findDocumentIndexById(id))
+		db.writeString(id + "-DELETE\n")
+		delete(db.Documents, id)
 
 	}
 
-	db.File.Sync()
+	db.save()
 
 }
 
@@ -211,25 +196,35 @@ func (db *Streamlet) FindOne(callback func(document StreamletDocument) bool) Str
 // Gets one document by id.
 func (db *Streamlet) Get(id string) StreamletDocument {
 
-	return db.FindOne(func(document StreamletDocument) bool {
+	return db.Documents[id]
 
-		return document.Id == id
+}
 
-	})
+func (db *Streamlet) Keys() []string {
+
+	keys := make([]string, 0)
+
+	for key := range db.Documents {
+
+		keys = append(keys, key)
+
+	}
+
+	return keys
 
 }
 
 // Deletes deleted documents and edits edited documents in the database file itself - WARNING: this will rewrite the database file entirely, use this sparingly or on small databases.
-func (db *Streamlet) Clean() {
+// func (db *Streamlet) Clean() {
 
-	os.Truncate(db.File.Name(), 0)
-	for _, doc := range db.Documents {
+// 	os.Truncate(db.File.Name(), 0)
+// 	for _, doc := range db.Documents {
 
-		j, _ := json.Marshal(doc.Data)
-		db.File.WriteString(doc.Id + "-" + string(j) + "\n")
+// 		j, _ := json.Marshal(doc.Data)
+// 		db.File.WriteString(doc.Id + "-" + string(j) + "\n")
 
-	}
+// 	}
 
-	db.File.Sync()
+// 	db.File.Sync()
 
-}
+// }
